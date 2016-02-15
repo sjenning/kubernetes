@@ -19,6 +19,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api/meta"
@@ -190,9 +191,32 @@ func RunGet(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string
 			return err
 		}
 
-		kubectl.WatchLoop(w, func(e watch.Event) error {
+		err = kubectl.WatchLoop(w, func(e watch.Event) error {
 			return printer.PrintObj(e.Object, out)
 		})
+
+		if err != nil {
+			// previous WatchLoop fail due to old resource
+			// retry with current index as resourceVersion
+
+			// nasty hack, parse error message for current index
+			// format: 401: The event in requested index is outdated ... [82340/2804]) [83339]
+			// where 83339 is the current index
+			f := func(c rune) bool {
+				return c == '[' || c == ']'
+			}
+			fields := strings.FieldsFunc(err.Error(), f)
+			currentIndex := fields[len(fields)-1]
+
+			w, err := r.Watch(currentIndex)
+			if err != nil {
+				return err
+			}
+
+			kubectl.WatchLoop(w, func(e watch.Event) error {
+				return printer.PrintObj(e.Object, out)
+			})
+		}
 		return nil
 	}
 
