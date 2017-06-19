@@ -18,7 +18,6 @@ package cpuset
 
 import (
 	"fmt"
-	"io/ioutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +27,7 @@ import (
 
 	"sync"
 
+	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/api/v1"
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
@@ -88,7 +88,7 @@ type staticManager struct {
 
 	// podLister provides a method for listing all the pods on the node
 	// so all the containers can be updated in the reconciliation loop
-	podLister podLister
+	kletGetter kletGetter
 
 	// podStatusProvider provides a method for obtaining pod statuses
 	// and the containerID of their containers
@@ -121,8 +121,9 @@ var (
 	processorRegExp = regexp.MustCompile(`^processor\s*:\s*([0-9]+)$`)
 )
 
-type podLister interface {
+type kletGetter interface {
 	GetPods() []*v1.Pod
+	GetCachedMachineInfo() (*cadvisorapi.MachineInfo, error)
 }
 
 func discoverCPUInfo(cpuinfo []byte) (*cpuInfo, error) {
@@ -184,7 +185,7 @@ func (m *staticManager) reconcileSharedContainers() {
 	glog.Errorf("SETH staticManager reconcileSharedPoolContainers")
 	m.Lock()
 	defer m.Unlock()
-	pods := m.podLister.GetPods()
+	pods := m.kletGetter.GetPods()
 	//glog.Errorf("SETH pods %v", pods)
 	for _, pod := range pods {
 		for _, container := range pod.Spec.Containers {
@@ -264,21 +265,26 @@ func (m *staticManager) allocateCpus(containerID string, numCpus int64) (string,
 }
 
 // NewStaticManager returns a cupset manager that statically assigns cpus
-func NewStaticManager(podLister podLister, podStatusProvider status.PodStatusProvider, containerRuntime internalapi.RuntimeService) (Manager, error) {
+func NewStaticManager(kletGetter kletGetter, podStatusProvider status.PodStatusProvider, containerRuntime internalapi.RuntimeService) (Manager, error) {
 	glog.Errorf("SETH NewStaticManager")
-	cpuInfoFile, err := ioutil.ReadFile("/proc/cpuinfo")
+	machinInfo, err := kletGetter.GetCachedMachineInfo()
 	if err != nil {
 		return nil, err
 	}
-	cpuInfo, err := discoverCPUInfo(cpuInfoFile)
-	if err != nil {
-		return nil, err
+
+	if machinInfo.NumCores == 0 {
+		return nil, fmt.Errorf("could not detect number of cpus")
 	}
+
+	cpuInfo := &cpuInfo{
+		cpus: int64(machinInfo.NumCores),
+	}
+
 	glog.V(3).Infof("SETH cpuInfo: %v", cpuInfo)
 
 	m := &staticManager{
 		containerRuntime:  containerRuntime,
-		podLister:         podLister,
+		kletGetter:        kletGetter,
 		podStatusProvider: podStatusProvider,
 		cpuInfo:           cpuInfo,
 		cpuAssignments:    make([]string, cpuInfo.cpus),
