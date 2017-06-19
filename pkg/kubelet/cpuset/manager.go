@@ -72,7 +72,9 @@ func (m *noopManager) UnregisterContainer(containerID string) error {
 }
 
 type cpuInfo struct {
-	cpus int64
+	nodeId    int64
+	coreId    int64
+	assigment string
 }
 
 type staticManager struct {
@@ -82,17 +84,15 @@ type staticManager struct {
 	// to make UpdateContainerResources() calls against the containers
 	containerRuntime internalapi.RuntimeService
 
-	// podLister provides a method for listing all the pods on the node
-	// so all the containers can be updated in the reconciliation loop
+	// kletGetter provides a methods for obtaining various data from kubelet
 	kletGetter kletGetter
 
 	// podStatusProvider provides a method for obtaining pod statuses
 	// and the containerID of their containers
 	podStatusProvider status.PodStatusProvider
 
-	// cpuInfo contains information about the CPU topology needed to make
-	// container placement decisions
-	cpuInfo *cpuInfo
+	//allCpus
+	allCpus int64
 
 	// sharedContainers is a map of containerIDs to their cached cpusets.
 	// This is to avoid unnecessary UpdateContainerResources() calls.
@@ -101,10 +101,9 @@ type staticManager struct {
 	// cached string version of the shared cpuset derived from cpuAssignments
 	sharedCpuset string
 
-	// cpuAssignments is an array for determining if a particular cpu is
-	// assigned to a container, if value is the containerID, or part of the
-	// shared pool, if value is ""
-	cpuAssignments []string
+	// cpuAssignmentState is an array for determining if a particular cpu is
+	// assigned to a container or not
+	cpuAssignmentState []cpuInfo
 
 	// numSharedCpus is the number of cpus in the shared pool i.e. cpus
 	// available for allocation to guaranteed containers.
@@ -142,8 +141,8 @@ func findContainerIDByName(status *v1.PodStatus, name string) (string, error) {
 
 func (m *staticManager) updateSharedCpuset() {
 	cpuset := ""
-	for cpu, containerID := range m.cpuAssignments {
-		if containerID != "" {
+	for cpu, info := range m.cpuAssignmentState {
+		if info.assigment != "" {
 			continue
 		}
 		if cpuset != "" {
@@ -200,14 +199,14 @@ func (m *staticManager) reconcileSharedContainers() {
 
 func (m *staticManager) assignCpu(containerID string, cpu int) {
 	glog.Errorf("SETH assignCpu %v %v", containerID, cpu)
-	m.cpuAssignments[cpu] = containerID
+	m.cpuAssignmentState[cpu].assigment = containerID
 	m.numSharedCpus--
 	m.updateSharedCpuset()
 }
 
 func (m *staticManager) releaseCpu(cpu int) {
-	glog.Errorf("SETH releaseCpu %v belonging to %v", cpu, m.cpuAssignments[cpu])
-	m.cpuAssignments[cpu] = ""
+	glog.Errorf("SETH releaseCpu %v belonging to %v", cpu, m.cpuAssignmentState[cpu])
+	m.cpuAssignmentState[cpu].assigment = ""
 	m.numSharedCpus++
 	m.updateSharedCpuset()
 }
@@ -219,8 +218,8 @@ func (m *staticManager) allocateCpus(containerID string, numCpus int64) (string,
 	}
 	cpuset := ""
 	cpusLeft := numCpus
-	for cpu, cid := range m.cpuAssignments {
-		if cid != "" {
+	for cpu, info := range m.cpuAssignmentState {
+		if info.assigment != "" {
 			continue
 		}
 		m.assignCpu(containerID, cpu)
@@ -250,20 +249,33 @@ func NewStaticManager(kletGetter kletGetter, podStatusProvider status.PodStatusP
 		return nil, fmt.Errorf("could not detect number of cpus")
 	}
 
-	cpuInfo := &cpuInfo{
-		cpus: int64(machinInfo.NumCores),
+	allCpus := int64(machinInfo.NumCores)
+	glog.V(3).Infof("SETH allCpus: %v", allCpus)
+
+	cpuAssignmentState := make([]cpuInfo, allCpus)
+	for _, node := range machinInfo.Topology {
+		for _, core := range node.Cores {
+			for _, thread := range core.Threads {
+				if int64(thread) >= allCpus {
+					return nil, fmt.Errorf("thread id greather than number of cpus")
+				}
+				cpuAssignmentState[thread] = cpuInfo{
+					nodeId:    int64(node.Id),
+					coreId:    int64(core.Id),
+					assigment: "",
+				}
+			}
+		}
 	}
 
-	glog.V(3).Infof("SETH cpuInfo: %v", cpuInfo)
-
 	m := &staticManager{
-		containerRuntime:  containerRuntime,
-		kletGetter:        kletGetter,
-		podStatusProvider: podStatusProvider,
-		cpuInfo:           cpuInfo,
-		cpuAssignments:    make([]string, cpuInfo.cpus),
-		numSharedCpus:     cpuInfo.cpus,
-		sharedContainers:  map[string]string{},
+		containerRuntime:   containerRuntime,
+		kletGetter:         kletGetter,
+		podStatusProvider:  podStatusProvider,
+		allCpus:            allCpus,
+		cpuAssignmentState: cpuAssignmentState,
+		numSharedCpus:      allCpus,
+		sharedContainers:   map[string]string{},
 	}
 
 	// reserve cpu 0 for system processes
@@ -325,8 +337,8 @@ func (m *staticManager) UnregisterContainer(containerID string) error {
 	glog.Errorf("SETH staticManager UnregisterContainer")
 	m.Lock()
 	defer m.Unlock()
-	for cpu, cid := range m.cpuAssignments {
-		if cid == containerID {
+	for cpu, info := range m.cpuAssignmentState {
+		if info.assigment == containerID {
 			m.releaseCpu(cpu)
 		}
 	}
