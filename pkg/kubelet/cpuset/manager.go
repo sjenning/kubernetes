@@ -18,14 +18,10 @@ package cpuset
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/golang/glog"
-
+	"strconv"
 	"sync"
+	"time"
 
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -117,31 +113,9 @@ type staticManager struct {
 
 var _ Manager = &staticManager{}
 
-var (
-	processorRegExp = regexp.MustCompile(`^processor\s*:\s*([0-9]+)$`)
-)
-
 type kletGetter interface {
 	GetPods() []*v1.Pod
 	GetCachedMachineInfo() (*cadvisorapi.MachineInfo, error)
-}
-
-func discoverCPUInfo(cpuinfo []byte) (*cpuInfo, error) {
-	cpus := int64(0)
-	for _, line := range strings.Split(string(cpuinfo), "\n") {
-		matches := processorRegExp.FindSubmatch([]byte(line))
-		if len(matches) == 2 {
-			cpus++
-		}
-	}
-
-	if cpus == 0 {
-		return nil, fmt.Errorf("could not detect number of cpus")
-	}
-
-	return &cpuInfo{
-		cpus: cpus,
-	}, nil
 }
 
 func guaranteedCpus(pod *v1.Pod, container *v1.Container) int64 {
