@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package topo
+package topology
 
 import (
 	"reflect"
@@ -23,7 +23,7 @@ import (
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 )
 
-func Test_DiscoverTopology(t *testing.T) {
+func Test_Discover(t *testing.T) {
 
 	tests := []struct {
 		name    string
@@ -108,17 +108,17 @@ func Test_DiscoverTopology(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := DiscoverTopology(tt.args)
+			got, err := Discover(tt.args)
 			if err != nil {
 				if tt.wantErr {
-					t.Logf("discoverTopology() expected error = %v", err)
+					t.Logf("Discover() expected error = %v", err)
 				} else {
-					t.Errorf("discoverTopology() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("Discover() error = %v, wantErr %v", err, tt.wantErr)
 				}
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("discoverTopology() = %v, want %v", got, tt.want)
+				t.Errorf("Discover() = %v, want %v", got, tt.want)
 			}
 		})
 	}

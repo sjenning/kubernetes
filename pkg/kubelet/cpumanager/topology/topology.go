@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package topo
+package topology
 
 import (
 	"fmt"
@@ -38,7 +38,7 @@ type CPUInfo struct {
 	CoreId   int
 }
 
-func DiscoverTopology(machineInfo *cadvisorapi.MachineInfo) (*CPUTopology, error) {
+func Discover(machineInfo *cadvisorapi.MachineInfo) (*CPUTopology, error) {
 
 	if machineInfo.NumCores == 0 {
 		return nil, fmt.Errorf("could not detect number of cpus")

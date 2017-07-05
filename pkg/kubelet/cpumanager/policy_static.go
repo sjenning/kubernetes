@@ -22,7 +22,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cpumanager/state"
-	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topo"
+	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cpuset"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 )
@@ -30,13 +30,13 @@ import (
 const PolicyStatic PolicyName = "static"
 
 type staticPolicy struct {
-	topology *topo.CPUTopology
+	topology *topology.CPUTopology
 }
 
 // NewStaticPolicy returns a cupset manager policy that does not change
 // CPU assignments for exclusively pinned guaranteed containers after
 // the main container process starts.
-func NewStaticPolicy(topology *topo.CPUTopology) Policy {
+func NewStaticPolicy(topology *topology.CPUTopology) Policy {
 	return &staticPolicy{
 		topology: topology,
 	}

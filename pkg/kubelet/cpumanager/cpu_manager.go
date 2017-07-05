@@ -28,7 +28,7 @@ import (
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cpumanager/state"
-	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topo"
+	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/status"
 )
 
@@ -70,7 +70,7 @@ func NewManager(policyType string, cr internalapi.RuntimeService, kletGetter kle
 		if err != nil {
 			return nil, err
 		}
-		topo, err := topo.DiscoverTopology(machinInfo)
+		topo, err := topology.Discover(machinInfo)
 		if err != nil {
 			return nil, err
 		}
