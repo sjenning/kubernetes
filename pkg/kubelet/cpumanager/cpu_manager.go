@@ -28,7 +28,7 @@ import (
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cpumanager/state"
-	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topo"
+	"k8s.io/kubernetes/pkg/kubelet/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/status"
 )
 
@@ -70,7 +70,7 @@ func NewManager(policyType string, cr internalapi.RuntimeService, kletGetter kle
 		if err != nil {
 			return nil, err
 		}
-		topo, err := discoverTopology(machinInfo)
+		topo, err := topology.Discover(machinInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -158,42 +158,6 @@ func (m *manager) UnregisterContainer(containerID string) error {
 // CPU Manager state is read-only from outside this package.
 func (m *manager) State() state.Reader {
 	return m.state
-}
-
-func discoverTopology(machineInfo *cadvisorapi.MachineInfo) (*topo.CPUTopology, error) {
-
-	if machineInfo.NumCores == 0 {
-		return nil, fmt.Errorf("could not detect number of cpus")
-	}
-
-	CPUtopoDetails := make(map[int]topo.CPUInfo)
-
-	numCPUs := machineInfo.NumCores
-	htEnabled := false
-	numPhysicalCores := 0
-	for _, socket := range machineInfo.Topology {
-		numPhysicalCores += len(socket.Cores)
-		for _, core := range socket.Cores {
-			for _, cpu := range core.Threads {
-				CPUtopoDetails[cpu] = topo.CPUInfo{
-					CoreId:   core.Id,
-					SocketId: socket.Id,
-				}
-				// a little bit naive
-				if !htEnabled && len(core.Threads) != 1 {
-					htEnabled = true
-				}
-			}
-		}
-	}
-
-	return &topo.CPUTopology{
-		NumCPUs:        numCPUs,
-		NumSockets:     len(machineInfo.Topology),
-		NumCores:       numPhysicalCores,
-		HyperThreading: htEnabled,
-		CPUtopoDetails: CPUtopoDetails,
-	}, nil
 }
 
 func (m *manager) reconcileState() {
