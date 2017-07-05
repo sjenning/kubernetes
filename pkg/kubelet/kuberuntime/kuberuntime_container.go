@@ -81,7 +81,11 @@ func (m *kubeGenericRuntimeManager) startContainer(podSandboxID string, podSandb
 		m.recorder.Eventf(ref, v1.EventTypeWarning, events.FailedToCreateContainer, "Failed to create container with error: %v", err)
 		return "Create Container Failed", err
 	}
-	m.cpuManager.RegisterContainer(pod, container, containerID)
+	err = m.cpuManager.RegisterContainer(pod, container, containerID)
+	if err != nil {
+		m.recorder.Eventf(ref, v1.EventTypeWarning, events.FailedToStartContainer, "Failed to register container with CPU manager: %v", err)
+		return "Registering With CPU Manager Failed", err
+	}
 	m.recorder.Eventf(ref, v1.EventTypeNormal, events.CreatedContainer, "Created container with id %v", containerID)
 	if ref != nil {
 		m.containerRefManager.SetRef(kubecontainer.ContainerID{
