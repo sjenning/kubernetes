@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"github.com/golang/glog"
+	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/api/v1"
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
@@ -68,7 +68,7 @@ func NewManager(policyType string, cr internalapi.RuntimeService, kletGetter kle
 	case PolicyStatic:
 		machinInfo, err := kletGetter.GetCachedMachineInfo()
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
 		topo, err := discoverTopology(machinInfo)
 		if err != nil {
@@ -80,7 +80,6 @@ func NewManager(policyType string, cr internalapi.RuntimeService, kletGetter kle
 		glog.Warningf("[cpumanager] Invalid policy, fallback to default policy - 'noop'")
 		newPolicy = NewNoopPolicy()
 	}
-
 
 	return &manager{
 		policy:            newPolicy,
@@ -108,6 +107,7 @@ type manager struct {
 	// and the containerID of their containers
 	podStatusProvider status.PodStatusProvider
 }
+
 func (m *manager) Start() {
 	glog.Infof("[cpumanger] starting (policy: \"%s\")", m.policy.Name())
 	m.policy.Start(m.state)
@@ -160,7 +160,6 @@ func (m *manager) State() state.Reader {
 	return m.state
 }
 
-
 func discoverTopology(machineInfo *cadvisorapi.MachineInfo) (*topo.CPUTopology, error) {
 
 	if machineInfo.NumCores == 0 {
@@ -169,7 +168,7 @@ func discoverTopology(machineInfo *cadvisorapi.MachineInfo) (*topo.CPUTopology, 
 
 	CPUtopoDetails := make(map[int]topo.CPUInfo)
 
-	numCPUs :=  machineInfo.NumCores
+	numCPUs := machineInfo.NumCores
 	htEnabled := false
 	numPhysicalCores := 0
 	for _, socket := range machineInfo.Topology {
@@ -177,7 +176,7 @@ func discoverTopology(machineInfo *cadvisorapi.MachineInfo) (*topo.CPUTopology, 
 		for _, core := range socket.Cores {
 			for _, cpu := range core.Threads {
 				CPUtopoDetails[cpu] = topo.CPUInfo{
-					CoreId: core.Id,
+					CoreId:   core.Id,
 					SocketId: socket.Id,
 				}
 				// a little bit naive
@@ -187,7 +186,6 @@ func discoverTopology(machineInfo *cadvisorapi.MachineInfo) (*topo.CPUTopology, 
 			}
 		}
 	}
-
 
 	return &topo.CPUTopology{
 		NumCPUs:        numCPUs,
@@ -229,7 +227,7 @@ func (m *manager) reconcileState() {
 					CpusetCpus: cset.String(),
 				})
 			if err != nil {
-				glog.Errorf("[cpumanager] reconcileState: failed to update container (pod: %s, container: %s, container id: %s, cpuset: \"%v\", err: %v)", pod.Name, container.Name, containerID, cset, err)
+				glog.Errorf("[cpumanager] reconcileState: failed to update container (pod: %s, container: %s, container id: %s, cpuset: \"%v\", error: %v)", pod.Name, container.Name, containerID, cset, err)
 			}
 		}
 	}

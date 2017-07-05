@@ -30,7 +30,7 @@ import (
 const PolicyStatic PolicyName = "static"
 
 type staticPolicy struct {
-	topology      *topo.CPUTopology
+	topology *topo.CPUTopology
 }
 
 // NewStaticPolicy returns a cupset manager policy that does not change
@@ -64,7 +64,7 @@ func (p *staticPolicy) RegisterContainer(s state.State, pod *v1.Pod, container *
 		// container belongs in an exclusively allocated pool
 		cpuset, err := p.allocateCPUs(s, numCPUs)
 		if err != nil {
-			glog.Errorf("[cpumanager] unable to allocate %d CPUs (container: (%v)", numCPUs, containerID, err)
+			glog.Errorf("[cpumanager] unable to allocate %d CPUs (container id: %s, error: %v)", numCPUs, containerID, err)
 			return err
 		}
 		s.SetCPUSet(containerID, cpuset)

@@ -16,20 +16,18 @@ limitations under the License.
 
 package topo
 
-
 //CPU  - logical CPU, cadvisor - thread
 //Core - physical CPU, cadvisor - Core
 //Socket - socket, cadvisor - Node
 type CPUTopology struct {
-	NumCPUs           int
-	NumCores          int
-	HyperThreading    bool
-	NumSockets        int
-	CPUtopoDetails    map[int]CPUInfo
+	NumCPUs        int
+	NumCores       int
+	HyperThreading bool
+	NumSockets     int
+	CPUtopoDetails map[int]CPUInfo
 }
 
 type CPUInfo struct {
 	SocketId int
 	CoreId   int
 }
-
