@@ -434,7 +434,7 @@ type KubeletConfiguration struct {
 	// +optional
 	CgroupDriver string `json:"cgroupDriver,omitempty"`
 	// CPU Manager policy to use.
-	CPUManagerPolicy string `json:"CPUManagerPolicy"`
+	CPUManagerPolicy string `json:"cpuManagerPolicy"`
 	// containerRuntime is the container runtime to use.
 	ContainerRuntime string `json:"containerRuntime"`
 	// remoteRuntimeEndpoint is the endpoint of remote runtime service
