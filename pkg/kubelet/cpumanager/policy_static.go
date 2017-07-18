@@ -18,6 +18,7 @@ package cpumanager
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -93,11 +94,115 @@ func (p *staticPolicy) allocateCPUs(s state.State, numCPUs int) (cpuset.CPUSet, 
 	resultCPUs := sharedCPUs[0:numCPUs]
 	result := cpuset.NewCPUSet(resultCPUs...)
 
+	result, err := takeByTopology(p.topology, s.GetDefaultCPUSet(), numCPUs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Remove allocated CPUs from the shared CPUSet.
 	s.SetDefaultCPUSet(s.GetDefaultCPUSet().Difference(result))
 
 	glog.Infof("[cpumanager] allocateCPUs: returning \"%v\"", result)
 	return result, nil
+}
+
+func takeByTopology(topo *topology.CPUTopology, availableCPUs cpuset.CPUSet, numCPUs int) (cpuset.CPUSet, error) {
+	if numCPUs > availableCPUs.Size() {
+		return cpuset.NewCPUSet(), fmt.Errorf("not enough cpus available to satisfy request")
+	}
+
+	// Algorithm: topology-aware best-fit
+
+	CPUsPerCore := topo.NumCPUs / topo.NumCores
+	CPUsPerSocket := topo.NumCPUs / topo.NumSockets
+
+	result := cpuset.NewCPUSet()
+	topoDetails := topo.CPUtopoDetails.KeepOnly(availableCPUs)
+
+	take := func(cpus cpuset.CPUSet) {
+		result = result.Union(cpus)
+		availableCPUs = availableCPUs.Difference(result)
+		topoDetails = topoDetails.KeepOnly(availableCPUs)
+		numCPUs -= cpus.Size()
+	}
+
+	isFullSocket := func(socketID int) bool {
+		return topoDetails.CPUsInSocket(socketID).Size() == CPUsPerSocket
+	}
+
+	isFullCore := func(coreID int) bool {
+		return topoDetails.CPUsInCore(coreID).Size() == CPUsPerCore
+	}
+
+	// 1. Acquire whole sockets, if available and the container requires
+	//    at least a socket's-worth of CPUs.
+	for s := range topoDetails.Sockets().Filter(isFullSocket) {
+		if numCPUs >= CPUsPerSocket {
+			glog.V(4).Infof("[cpumanager] takeByTopology: claiming socket [%d]", s)
+			take(topoDetails.CPUsInSocket(s))
+			if numCPUs < 1 {
+				return result, nil
+			}
+		}
+	}
+
+	// 2. Acquire whole cores, if available and the container requires
+	//    at least a core's-worth of CPUs.
+
+	// `socketIDs` are sorted by:
+	// - the number of whole available cores, ascending.
+	socketIDs := topoDetails.Sockets().AsSlice()
+	sort.Slice(socketIDs,
+		func(i, j int) bool {
+			iCores := topoDetails.CoresInSocket(socketIDs[i]).Filter(isFullCore)
+			jCores := topoDetails.CoresInSocket(socketIDs[j]).Filter(isFullCore)
+			return iCores.Size() < jCores.Size()
+		})
+
+	for _, s := range socketIDs {
+		sCores := topoDetails.CoresInSocket(s).Filter(isFullCore)
+		for core := range sCores {
+			if numCPUs >= CPUsPerCore {
+				glog.V(4).Infof("[cpumanager] takeByTopology: claiming core [%d]", core)
+				take(topoDetails.CPUsInCore(core))
+				if numCPUs < 1 {
+					return result, nil
+				}
+			}
+		}
+	}
+
+	// 3. Acquire single threads, preferring to fill partially-allocated cores
+	//    on the same sockets as the whole cores we have already taken.
+
+	// `cpuIDs` are sorted by:
+	// - the number of available CPUs on the same core, ascending
+	// - the number of already assigned CPUs for this allocation on the
+	//   same socket, descending
+	cpuIDs := availableCPUs.AsSlice()
+	sort.Slice(cpuIDs,
+		func(i, j int) bool {
+			// Compute the number of CPUs on the same socket as i and j in
+			// the result.
+			iSocketScore := topo.CPUtopoDetails.CPUsInSocket(i).Intersection(result).Size()
+			jSocketScore := topo.CPUtopoDetails.CPUsInSocket(j).Intersection(result).Size()
+
+			// Compute the number of available CPUs on the same core as i and j.
+			iCoreScore := topoDetails.CPUsInCore(topoDetails[i].CoreId).Size()
+			jCoreScore := topoDetails.CPUsInCore(topoDetails[i].CoreId).Size()
+
+			return iSocketScore > jSocketScore || iCoreScore < jCoreScore
+		})
+
+	for _, cpu := range cpuIDs {
+		glog.V(4).Infof("[cpumanager] takeByTopology: claiming CPU [%d]", cpu)
+		take(cpuset.NewCPUSet(cpu))
+		if numCPUs < 1 {
+			return result, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to allocate cpus")
 }
 
 func (p *staticPolicy) releaseCPUs(s state.State, release cpuset.CPUSet) {
