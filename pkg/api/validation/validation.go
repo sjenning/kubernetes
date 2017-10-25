@@ -2962,6 +2962,21 @@ func ValidatePodUpdate(newPod, oldPod *api.Pod) field.ErrorList {
 	return allErrs
 }
 
+func ValidateContainerStateTransition(newStatuses, oldStatuses []api.ContainerStatus, fldpath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for i, oldStatus := range oldStatuses {
+		for _, newStatus := range newStatuses {
+			if oldStatus.Name != newStatus.Name {
+				continue
+			}
+			if oldStatus.State.Terminated != nil && newStatus.State.Terminated == nil {
+				allErrs = append(allErrs, field.Forbidden(fldpath.Index(i).Child("state"), "may not be transitioned to non-terminated state"))
+			}
+		}
+	}
+	return allErrs
+}
+
 // ValidatePodStatusUpdate tests to see if the update is legal for an end user to make. newPod is updated with fields
 // that cannot be changed.
 func ValidatePodStatusUpdate(newPod, oldPod *api.Pod) field.ErrorList {
@@ -2969,8 +2984,16 @@ func ValidatePodStatusUpdate(newPod, oldPod *api.Pod) field.ErrorList {
 	allErrs := ValidateObjectMetaUpdate(&newPod.ObjectMeta, &oldPod.ObjectMeta, fldPath)
 	allErrs = append(allErrs, ValidatePodSpecificAnnotationUpdates(newPod, oldPod, fldPath.Child("annotations"))...)
 
+	fldPath = field.NewPath("status")
 	if newPod.Spec.NodeName != oldPod.Spec.NodeName {
-		allErrs = append(allErrs, field.Forbidden(field.NewPath("status", "nodeName"), "may not be changed directly"))
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("nodeName"), "may not be changed directly"))
+	}
+
+	// If pod should never restart, make sure the status update doesn't transition
+	// any terminated containers to a non-terminated state.
+	if oldPod.Spec.RestartPolicy == api.RestartPolicyNever {
+		allErrs = append(allErrs, ValidateContainerStateTransition(newPod.Status.ContainerStatuses, oldPod.Status.ContainerStatuses, fldPath.Child("containerStatuses"))...)
+		allErrs = append(allErrs, ValidateContainerStateTransition(newPod.Status.InitContainerStatuses, oldPod.Status.InitContainerStatuses, fldPath.Child("initContainerStatuses"))...)
 	}
 
 	// For status update we ignore changes to pod spec.
