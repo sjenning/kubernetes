@@ -35,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/util/queue"
 )
 
+// This is something cool
+
 // OnCompleteFunc is a function that is invoked when an operation completes.
 // If err is non-nil, the operation did not complete successfully.
 type OnCompleteFunc func(err error)
