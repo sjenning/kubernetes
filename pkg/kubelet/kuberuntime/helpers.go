@@ -193,12 +193,14 @@ func toKubeRuntimeStatus(status *runtimeapi.RuntimeStatus) *kubecontainer.Runtim
 
 // getSysctlsFromAnnotations gets sysctls and unsafeSysctls from annotations.
 func getSysctlsFromAnnotations(annotations map[string]string) (map[string]string, error) {
+	sysctls := make(map[string]string)
+	if !utilfeature.DefaultFeatureGate.Enabled(features.Sysctls) {
+		return sysctls, nil
+	}
 	apiSysctls, apiUnsafeSysctls, err := v1helper.SysctlsFromPodAnnotations(annotations)
 	if err != nil {
 		return nil, err
 	}
-
-	sysctls := make(map[string]string)
 	for _, c := range apiSysctls {
 		sysctls[c.Name] = c.Value
 	}
