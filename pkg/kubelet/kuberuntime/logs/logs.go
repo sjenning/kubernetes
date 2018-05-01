@@ -25,6 +25,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/pkg/jsonlog"
@@ -357,6 +358,9 @@ func ReadLogs(path, containerID string, opts *LogOptions, runtimeService interna
 func isContainerRunning(id string, r internalapi.RuntimeService) (bool, error) {
 	s, err := r.ContainerStatus(id)
 	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return false, nil
+		}
 		return false, err
 	}
 	// Only keep following container log when it is running.
