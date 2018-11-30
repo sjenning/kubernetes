@@ -718,6 +718,10 @@ type KubeletConfiguration struct {
 	// Default: ["pods"]
 	// +optional
 	EnforceNodeAllocatable []string `json:"enforceNodeAllocatable,omitempty"`
+	// Whitelist of unsafe sysctls or sysctl patterns (ending in *).
+	// Default: ""
+	// +optional
+	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
 }
 
 type KubeletAuthorizationMode string

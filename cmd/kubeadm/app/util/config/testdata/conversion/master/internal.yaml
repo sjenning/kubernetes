@@ -164,6 +164,7 @@ ComponentConfigs:
     TLSMinVersion: ""
     TLSPrivateKeyFile: ""
     VolumeStatsAggPeriod: 1m0s
+    AllowedUnsafeSysctls: ""
 ControlPlaneEndpoint: ""
 ControllerManager:
   ExtraArgs: null
