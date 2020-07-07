@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/checkpoint"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -126,15 +126,19 @@ type basicManager struct {
 
 	// A mirror pod client to create/delete mirror pods.
 	MirrorClient
+
+	// isMirrorPodTerminatingFunc returns true if the mirror pod being killed by the pod killer
+	isMirrorPodTerminatingFunc func(podFullname string) bool
 }
 
 // NewBasicPodManager returns a functional Manager.
-func NewBasicPodManager(client MirrorClient, secretManager secret.Manager, configMapManager configmap.Manager, cpm checkpointmanager.CheckpointManager) Manager {
+func NewBasicPodManager(client MirrorClient, secretManager secret.Manager, configMapManager configmap.Manager, cpm checkpointmanager.CheckpointManager, isMirrorPodTerminatingFunc func(podFullname string) bool) Manager {
 	pm := &basicManager{}
 	pm.secretManager = secretManager
 	pm.configMapManager = configMapManager
 	pm.checkpointManager = cpm
 	pm.MirrorClient = client
+	pm.isMirrorPodTerminatingFunc = isMirrorPodTerminatingFunc
 	pm.SetPods(nil)
 	return pm
 }
@@ -338,6 +342,9 @@ func (pm *basicManager) getOrphanedMirrorPodNames() []string {
 func (pm *basicManager) DeleteOrphanedMirrorPods() {
 	podFullNames := pm.getOrphanedMirrorPodNames()
 	for _, podFullName := range podFullNames {
+		if pm.isMirrorPodTerminatingFunc(podFullName) {
+			continue
+		}
 		pm.MirrorClient.DeleteMirrorPod(podFullName, nil)
 	}
 }
