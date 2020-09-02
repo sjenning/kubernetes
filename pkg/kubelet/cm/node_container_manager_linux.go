@@ -23,7 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
+	cgroupfs "github.com/opencontainers/runc/libcontainer/cgroups/fs"
+	libcontainerconfigs "github.com/opencontainers/runc/libcontainer/configs"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -116,6 +118,20 @@ func (cm *containerManagerImpl) enforceNodeAllocatableCgroups() error {
 			return fmt.Errorf(message)
 		}
 		cm.recorder.Eventf(nodeRef, v1.EventTypeNormal, events.SuccessfulNodeAllocatableEnforcement, "Updated limits on system reserved cgroup %v", nc.SystemReservedCgroupName)
+	} else {
+		// Attempt to detect system cgroup to enforce cpu shares from system reservation
+		// This should be done even if EnforceNodeAllocatable does not contain "system"
+		if cpu, ok := nc.SystemReserved[v1.ResourceCPU]; ok {
+			cpuOnlySystemReserved := v1.ResourceList{v1.ResourceCPU: cpu}
+			assumedSystemCgroupName := "system"
+			klog.V(2).Infof("Enforcing System reserved (cpu only) on cgroup %q with limits: %+v", assumedSystemCgroupName, cpuOnlySystemReserved)
+			if err := enforceSystemCgroupCPU(cm.cgroupManager.CgroupName(assumedSystemCgroupName), cpuOnlySystemReserved); err != nil {
+				message := fmt.Sprintf("Failed to enforce System Reserved (cpu only) Cgroup Limit on %q: %v", assumedSystemCgroupName, err)
+				cm.recorder.Event(nodeRef, v1.EventTypeWarning, events.FailedNodeAllocatableEnforcement, message)
+			} else {
+				cm.recorder.Eventf(nodeRef, v1.EventTypeNormal, events.SuccessfulNodeAllocatableEnforcement, "Updated (cpu only) limit on system reserved cgroup %v", assumedSystemCgroupName)
+			}
+		}
 	}
 	if nc.EnforceNodeAllocatable.Has(kubetypes.KubeReservedEnforcementKey) {
 		klog.V(2).Infof("Enforcing kube reserved on cgroup %q with limits: %+v", nc.KubeReservedCgroupName, nc.KubeReserved)
@@ -127,6 +143,21 @@ func (cm *containerManagerImpl) enforceNodeAllocatableCgroups() error {
 		cm.recorder.Eventf(nodeRef, v1.EventTypeNormal, events.SuccessfulNodeAllocatableEnforcement, "Updated limits on kube reserved cgroup %v", nc.KubeReservedCgroupName)
 	}
 	return nil
+}
+
+// enforceSystemCgroupCPU updates cpu.shares in `rl` on existing system cgroup (if it exists)
+func enforceSystemCgroupCPU(cName CgroupName, rl v1.ResourceList) error {
+	resourceParameters := getCgroupConfig(rl)
+	if resourceParameters == nil {
+		return fmt.Errorf("%q cgroup is not config properly", cName)
+	}
+	klog.V(4).Infof("Enforcing limits on system cgroup %q with %d cpu shares", cName, resourceParameters.CpuShares)
+	resources := ToLibcontainerResources(getCgroupConfig(rl))
+	libcontainerCgroupConfig := &libcontainerconfigs.Cgroup{
+		Resources: resources,
+	}
+	cpuGroup := cgroupfs.CpuGroup{}
+	return cpuGroup.Set("/sys/fs/cgroup/cpu/system.slice", libcontainerCgroupConfig)
 }
 
 // enforceExistingCgroup updates the limits `rl` on existing cgroup `cName` using `cgroupManager` interface.

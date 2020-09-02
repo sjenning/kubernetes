@@ -515,7 +515,7 @@ func setResourcesV2(cgroupConfig *libcontainerconfigs.Cgroup) error {
 	return manager.Set(config)
 }
 
-func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcontainerconfigs.Resources {
+func ToLibcontainerResources(resourceConfig *ResourceConfig) *libcontainerconfigs.Resources {
 	resources := &libcontainerconfigs.Resources{
 		Devices: []*libcontainerconfigs.DeviceRule{
 			{
@@ -589,7 +589,7 @@ func (m *cgroupManagerImpl) Update(cgroupConfig *CgroupConfig) error {
 
 	// Extract the cgroup resource parameters
 	resourceConfig := cgroupConfig.ResourceParameters
-	resources := m.toResources(resourceConfig)
+	resources := ToLibcontainerResources(resourceConfig)
 
 	libcontainerCgroupConfig := &libcontainerconfigs.Cgroup{
 		Resources: resources,
@@ -631,7 +631,7 @@ func (m *cgroupManagerImpl) Create(cgroupConfig *CgroupConfig) error {
 		metrics.CgroupManagerDuration.WithLabelValues("create").Observe(metrics.SinceInSeconds(start))
 	}()
 
-	resources := m.toResources(cgroupConfig.ResourceParameters)
+	resources := ToLibcontainerResources(cgroupConfig.ResourceParameters)
 
 	libcontainerCgroupConfig := &libcontainerconfigs.Cgroup{
 		Resources: resources,
