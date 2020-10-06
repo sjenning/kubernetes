@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -132,7 +133,8 @@ func SetTransportDefaults(t *http.Transport) *http.Transport {
 	if s := os.Getenv("DISABLE_HTTP2"); len(s) > 0 {
 		klog.Infof("HTTP2 has been explicitly disabled")
 	} else if allowsHTTP2(t) {
-		if err := http2.ConfigureTransport(t); err != nil {
+		o := &http2.TransportOptions{ReadIdleTimeout: 10 * time.Second, PingTimeout: 10 * time.Second}
+		if err := http2.ConfigureTransportWithOptions(t, o); err != nil {
 			klog.Warningf("Transport failed http2 configuration: %v", err)
 		}
 	}
