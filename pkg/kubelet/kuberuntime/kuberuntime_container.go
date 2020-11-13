@@ -742,6 +742,19 @@ func findNextInitContainerToRun(pod *v1.Pod, podStatus *kubecontainer.PodStatus)
 		return nil, nil, true
 	}
 
+	// If any of the main containers have status, then all init containers must
+	// after executed at some point in the past.  However, they could be removed
+	// from the container runtime now, and if we proceed, it would appear as if they
+	// never ran and will re-execute improperly.
+	for i := range pod.Spec.Containers {
+		container := &pod.Spec.Containers[i]
+		status := podStatus.FindContainerStatusByName(container.Name)
+		if status == nil {
+			continue
+		}
+		return nil, nil, true
+	}
+
 	// If there are failed containers, return the status of the last failed one.
 	for i := len(pod.Spec.InitContainers) - 1; i >= 0; i-- {
 		container := &pod.Spec.InitContainers[i]
